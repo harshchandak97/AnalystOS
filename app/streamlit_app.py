@@ -1,5 +1,5 @@
 """
-AnalystOS — Lightweight AI equity analyst workflow.
+AnalystOS — AI-native sector analyst workflow.
 Run from project root: streamlit run app/streamlit_app.py
 """
 
@@ -13,185 +13,206 @@ if str(PROJECT_ROOT) not in sys.path:
 import pandas as pd
 import streamlit as st
 
-from src.parsers.load_documents import load_all_dossiers, load_dossiers_by_sector
-from src.extractors.guidance_extractor import extract_guidance
-from src.models.scenario_model import run_scenario_model, rank_companies
-from src.utils.constants import DATA_PROCESSED, OUTPUTS_DIR
+from src.parsers.load_documents import (
+    get_companies_for_sector,
+    fetch_sector_dossiers,
+    list_company_folders_in_raw,
+    load_sector_mapping,
+)
+from src.pipeline.run_analysis import run_full_analysis, STEPS
+from src.utils.constants import DATA_RAW, OUTPUTS_DIR
 from src.utils.io_helpers import save_ranking_csv, ensure_dir
+from src.utils.analyst_note import generate_analyst_note
 
 st.set_page_config(page_title="AnalystOS", layout="wide")
 
-# Session state: loaded dossiers and run results
+# Session state
 if "dossiers" not in st.session_state:
     st.session_state.dossiers = []
-if "results" not in st.session_state:
-    st.session_state.results = []  # list of (ExtractedGuidance, ScenarioOutput) per company
+if "analysis_result" not in st.session_state:
+    st.session_state.analysis_result = None
+if "step_statuses" not in st.session_state:
+    st.session_state.step_statuses = {s: "pending" for s in STEPS}
+if "activity_log" not in st.session_state:
+    st.session_state.activity_log = []
 
-# ---- Title ----
+# ---- A. PRODUCT HEADER ----
 st.title("AnalystOS")
-st.caption("Guidance → assumptions → bull/base/bear valuation → ranking")
+st.caption("**AI-native sector analyst workflow**")
+st.markdown(
+    "Select a sector. AnalystOS automatically fetches company documents, extracts forward guidance, "
+    "builds model-ready assumptions, runs bull/base/bear scenarios, and ranks opportunities with full source traceability."
+)
+st.divider()
 
-# ---- Sidebar ----
+# ---- B. SIDEBAR ----
 with st.sidebar:
-    st.header("Data")
-    sector = st.selectbox(
-        "Sector",
-        ["Technology", "Healthcare", "Consumer", "All"],
-        key="sector",
-    )
-    if st.button("Load sample data", type="primary"):
-        if sector == "All":
-            dossiers = load_all_dossiers(DATA_PROCESSED)
-        else:
-            dossiers = load_dossiers_by_sector(sector, DATA_PROCESSED)
+    st.header("Sector & companies")
+    mapping = load_sector_mapping()
+    sector_options = list(mapping.keys()) if mapping else []
+    if not sector_options:
+        sector_options = ["power_equipment", "Technology", "Healthcare", "Consumer"]
+    sector = st.selectbox("Sector", sector_options, key="sector")
+    companies_raw = get_companies_for_sector(sector)
+    st.caption(f"Companies in sector: {', '.join(companies_raw) or 'None'}")
+    if st.button("Fetch Sector Documents", type="primary"):
+        dossiers = fetch_sector_dossiers(sector)
         st.session_state.dossiers = dossiers
-        st.success(f"Loaded {len(dossiers)} companies")
-        st.session_state.results = []
+        st.session_state.analysis_result = None
+        st.success(f"Fetched {len(dossiers)} companies")
     st.divider()
-    st.caption("Data from `data/processed/*.json`. Load then run AnalystOS below.")
-
-# ---- Main: loaded companies table ----
-st.header("Loaded companies")
-dossiers = st.session_state.dossiers
-if not dossiers:
-    st.info("Click **Load sample data** in the sidebar to load company dossiers from `data/processed/`.")
-else:
-    table_data = []
-    for d in dossiers:
-        table_data.append({
-            "Company": d.get("company_name") or d.get("company_id", ""),
-            "Sector": d.get("sector", ""),
-            "Current price": d.get("current_price", ""),
-            "Current EPS": d.get("current_eps", ""),
-            "Median PE": d.get("historical_median_pe", ""),
-        })
-    st.dataframe(pd.DataFrame(table_data), use_container_width=True, hide_index=True)
-
-# ---- Run AnalystOS ----
-st.header("Run AnalystOS")
-if st.button("Run AnalystOS", type="primary"):
-    if not dossiers:
-        st.warning("Load sample data first.")
-    else:
-        results = []
-        for d in dossiers:
-            guidance = extract_guidance(d)
-            target_pe = d.get("historical_median_pe") or 20.0
-            current_price = float(d.get("current_price") or 0)
-            current_eps = float(d.get("current_eps") or 0)
-            # Pass assumptions as dict for consistent reading in scenario model
-            assumptions_dict = guidance.assumptions.model_dump() if hasattr(guidance.assumptions, "model_dump") else guidance.assumptions
-            output = run_scenario_model(
-                company_id=d.get("company_id", ""),
-                company_name=d.get("company_name", ""),
-                current_price=current_price,
-                current_eps=current_eps,
-                target_pe=float(target_pe),
-                assumptions=assumptions_dict,
-                insufficient_guidance=guidance.insufficient_guidance,
+    if st.button("Run AnalystOS"):
+        if not st.session_state.dossiers:
+            st.warning("Click Fetch Sector Documents first.")
+        else:
+            st.session_state.step_statuses = {s: "pending" for s in STEPS}
+            st.session_state.activity_log = []
+            result = run_full_analysis(
+                sector,
+                run_extraction=True,
+                on_step=lambda sid, status: st.session_state.step_statuses.update({sid: status}),
+                on_activity=lambda msg: st.session_state.activity_log.append(msg),
             )
-            results.append((guidance, output))
-        st.session_state.results = results
-        st.success("Done. See extracted guidance, scenario outputs, and ranking below.")
+            st.session_state.analysis_result = result
+            st.session_state.step_statuses = result.get("step_statuses", st.session_state.step_statuses)
+            st.session_state.activity_log = result.get("activity_log", [])
+            st.success("Analysis complete.")
+    st.divider()
+    company_options = [r["output"].company_name or r["output"].company_id for r in (st.session_state.analysis_result or {}).get("company_results", [])]
+    selected_company = st.selectbox("Company deep dive", [""] + company_options, key="drilldown_company") if company_options else None
 
-results = st.session_state.results
+dossiers = st.session_state.dossiers
+result = st.session_state.analysis_result
+step_statuses = st.session_state.step_statuses
+activity_log = st.session_state.activity_log
 
-# ---- Per-company: guidance quotes, assumptions, scenario table ----
-if results:
-    st.header("Extracted guidance & scenario outputs")
-    for guidance, output in results:
-        with st.expander(f"**{output.company_name or output.company_id}** — {output.verdict}"):
-            # Guidance table: metric, category, type, value_min/max, timeline, source, quote
-            st.subheader("Guidance")
-            if guidance.quotes:
-                rows = []
-                for q in guidance.quotes:
-                    rows.append({
-                        "Metric": q.get("metric", ""),
-                        "Category": q.get("category", ""),
-                        "Type": q.get("type", ""),
-                        "Value min": q.get("value_min"),
-                        "Value max": q.get("value_max"),
-                        "Unit": q.get("unit", ""),
-                        "Timeline": q.get("timeline", ""),
-                        "Source": q.get("source", ""),
-                        "Quote": (q.get("quote", ""))[:120] + ("..." if len(q.get("quote", "")) > 120 else ""),
-                    })
-                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-            else:
-                st.caption("No guidance quotes.")
-            # Conflicts (if any)
-            if getattr(guidance, "conflicts", None):
-                st.subheader("Conflicts")
-                for c in guidance.conflicts:
-                    st.caption(f"**{c.get('metric', '')}**: {c.get('source_a', '')} vs {c.get('source_b', '')} — {c.get('notes', '')}")
-                    st.text(f"A: \"{c.get('quote_a', '')}\"")
-                    st.text(f"B: \"{c.get('quote_b', '')}\"")
-            # Derived assumptions
-            st.subheader("Derived assumptions (bear / base / bull)")
-            a = guidance.assumptions
-            rev = f"Revenue growth %: {a.bear_revenue_growth} / {a.base_revenue_growth} / {a.bull_revenue_growth}"
-            margin = f"Margin %: {a.bear_margin} / {a.base_margin} / {a.bull_margin}"
-            st.write(rev)
-            st.write(margin)
-            # Scenario valuation table
-            st.subheader("Scenario valuation")
-            if output.bear and output.base and output.bull:
-                scenario_df = pd.DataFrame([
-                    {
-                        "Scenario": "Bear",
-                        "Projected EPS": output.bear.projected_eps,
-                        "Target price": output.bear.target_price,
-                        "CAGR %": output.bear.cagr_pct,
-                    },
-                    {
-                        "Scenario": "Base",
-                        "Projected EPS": output.base.projected_eps,
-                        "Target price": output.base.target_price,
-                        "CAGR %": output.base.cagr_pct,
-                    },
-                    {
-                        "Scenario": "Bull",
-                        "Projected EPS": output.bull.projected_eps,
-                        "Target price": output.bull.target_price,
-                        "CAGR %": output.bull.cagr_pct,
-                    },
-                ])
-                st.dataframe(scenario_df, use_container_width=True, hide_index=True)
-            else:
-                st.caption("Insufficient data for valuation.")
+# ---- C. ANALYSIS PIPELINE ----
+st.header("Analysis Pipeline")
+col1, col2 = st.columns([1, 1])
+with col1:
+    st.subheader("Step tracker")
+    for sid in STEPS:
+        status = step_statuses.get(sid, "pending")
+        label = sid.replace("_", " ").title()
+        if status == "completed":
+            st.success(f"✓ {label}")
+        elif status == "running":
+            st.info(f"▶ {label}...")
+        elif status == "failed":
+            st.error(f"✗ {label}")
+        else:
+            st.caption(f"○ {label}")
+with col2:
+    st.subheader("Activity log")
+    for line in activity_log[-20:]:
+        st.caption(line)
+    if not activity_log:
+        st.caption("Run AnalystOS to see activity.")
 
-# ---- Final ranking ----
-st.header("Final ranking")
-if results:
-    outputs = [r[1] for r in results]
-    ranked = rank_companies(outputs)
+st.divider()
+
+# ---- D. SECTOR LEADERBOARD ----
+st.header("Sector Opportunity Ranking")
+if result and result.get("ranked"):
+    ranked = result["ranked"]
+    company_results = {r["output"].company_id: r for r in result["company_results"]}
     rows = []
     for i, o in enumerate(ranked):
-        bear_cagr = o.bear.cagr_pct if o.bear else None
-        base_cagr = o.base_cagr_pct
-        bull_cagr = o.bull.cagr_pct if o.bull else None
+        r = company_results.get(o.company_id, {})
+        g = r.get("guidance")
+        strength = r.get("guidance_strength", "")
+        confidence = r.get("confidence", "")
+        assumptions = g.assumptions if g else None
+        rev_anchor = f"{assumptions.base_revenue_growth}%" if assumptions and assumptions.base_revenue_growth is not None else "—"
+        margin_anchor = f"{assumptions.base_margin}%" if assumptions and assumptions.base_margin is not None else "—"
+        quotes = getattr(g, "quotes", []) or []
+        rev_src = next((q.get("source", "") for q in quotes if (q.get("metric") or "").lower() == "revenue_growth"), "")
+        margin_src = next((q.get("source", "") for q in quotes if (q.get("metric") or "").lower() in ("ebitda_margin", "margin_floor", "margin")), "")
         rows.append({
-            "Rank": i + 1,
             "Company": o.company_name or o.company_id,
-            "Base CAGR %": base_cagr,
-            "Bull CAGR %": bull_cagr,
-            "Bear CAGR %": bear_cagr,
-            "Target price": o.base_target_price,
+            "Guidance Strength": strength,
+            "Revenue Anchor": rev_anchor,
+            "Margin Anchor": margin_anchor,
+            "Base CAGR %": round(o.base_cagr_pct, 2) if o.base else None,
+            "Bull CAGR %": round(o.bull.cagr_pct, 2) if o.bull else None,
+            "Bear CAGR %": round(o.bear.cagr_pct, 2) if o.bear else None,
             "Verdict": o.verdict,
+            "Confidence": confidence,
+            "Revenue source doc": rev_src,
+            "Margin source doc": margin_src,
         })
     rank_df = pd.DataFrame(rows)
     st.dataframe(rank_df, use_container_width=True, hide_index=True)
-
-    # Save to outputs and offer download
     ensure_dir(OUTPUTS_DIR)
-    csv_path = save_ranking_csv(rank_df, "ranking_results.csv")
-    st.download_button(
-        "Download ranking (CSV)",
-        data=rank_df.to_csv(index=False).encode("utf-8"),
-        file_name="ranking_results.csv",
-        mime="text/csv",
-    )
-    st.caption(f"Saved to `{csv_path}`")
+    csv_path = save_ranking_csv(rank_df, "sector_ranking.csv")
+    st.download_button("Download ranking (CSV)", data=rank_df.to_csv(index=False).encode("utf-8"), file_name="sector_ranking.csv", mime="text/csv")
 else:
-    st.write("Run AnalystOS to see the ranking.")
+    st.info("Fetch sector documents and Run AnalystOS to see the ranking.")
+
+st.divider()
+
+# ---- E. COMPANY DEEP DIVE ----
+st.header("Company Deep Dive")
+if result and result.get("company_results"):
+    company_results = result["company_results"]
+    selected = st.selectbox(
+        "Select company",
+        [r["output"].company_name or r["output"].company_id for r in company_results],
+        key="deep_dive_select",
+    )
+    if selected:
+        cr = next((r for r in company_results if (r["output"].company_name or r["output"].company_id) == selected), None)
+        if cr:
+            guidance, output = cr["guidance"], cr["output"]
+            dossier = cr.get("dossier", {})
+            rank = next((i + 1 for i, o in enumerate(result["ranked"]) if o.company_id == output.company_id), 0)
+            total = len(result["ranked"])
+            tab1, tab2, tab3, tab4 = st.tabs(["Evidence", "Assumptions", "Valuation", "Analyst Note"])
+
+            with tab1:
+                st.subheader("Evidence")
+                if guidance.quotes:
+                    for q in guidance.quotes:
+                        with st.expander(f"**View Source** — {q.get('metric', '')} ({q.get('category', '')})"):
+                            st.caption(f"**Document:** {q.get('source', '')} | **Page:** {q.get('source_page', '—')} | **Confidence:** {q.get('confidence', '')} | **Method:** {q.get('extraction_method', '')}")
+                            st.write(q.get("quote", ""))
+                        st.caption(f"{q.get('metric')} | {q.get('type')} | {q.get('value_min')}–{q.get('value_max')} {q.get('unit') or ''} | {q.get('timeline') or ''}")
+                if getattr(guidance, "conflicts", None):
+                    st.subheader("Conflicts")
+                    for c in guidance.conflicts:
+                        st.caption(f"**{c.get('metric')}**: {c.get('source_a')} vs {c.get('source_b')} — {c.get('notes')}")
+                        st.text(f"A: \"{c.get('quote_a', '')}\"")
+                        st.text(f"B: \"{c.get('quote_b', '')}\"")
+
+            with tab2:
+                st.subheader("Assumptions")
+                a = guidance.assumptions
+                st.write(f"**Revenue growth %:** Bear {a.bear_revenue_growth} | Base {a.base_revenue_growth} | Bull {a.bull_revenue_growth}")
+                st.write(f"**Margin %:** Bear {a.bear_margin} | Base {a.base_margin} | Bull {a.bull_margin}")
+                st.caption(f"Target PE used: {output.target_pe} (from historical median)")
+                st.caption("Supporting evidence: see Evidence tab for source quotes.")
+
+            with tab3:
+                st.subheader("Valuation")
+                if output.bear and output.base and output.bull:
+                    scenario_df = pd.DataFrame([
+                        {"Scenario": "Bear", "Projected EPS": output.bear.projected_eps, "Projected revenue": output.bear.projected_revenue, "Projected margin %": output.bear.projected_margin, "Target price": output.bear.target_price, "CAGR %": output.bear.cagr_pct},
+                        {"Scenario": "Base", "Projected EPS": output.base.projected_eps, "Projected revenue": output.base.projected_revenue, "Projected margin %": output.base.projected_margin, "Target price": output.base.target_price, "CAGR %": output.base.cagr_pct},
+                        {"Scenario": "Bull", "Projected EPS": output.bull.projected_eps, "Projected revenue": output.bull.projected_revenue, "Projected margin %": output.bull.projected_margin, "Target price": output.bull.target_price, "CAGR %": output.bull.cagr_pct},
+                    ])
+                    st.dataframe(scenario_df, use_container_width=True, hide_index=True)
+                else:
+                    st.caption("Insufficient data for valuation.")
+
+            with tab4:
+                st.subheader("Analyst Note")
+                key_evidence = [q.get("quote", "")[:100] + "..." for q in guidance.quotes[:2] if q.get("quote")]
+                note = generate_analyst_note(
+                    output.company_name or output.company_id,
+                    rank, total, output.verdict, output.base_cagr_pct,
+                    cr.get("guidance_strength", ""), cr.get("confidence", ""),
+                    key_evidence, len(getattr(guidance, "conflicts", []) or []),
+                )
+                st.markdown(note)
+else:
+    st.info("Run AnalystOS to see company deep dive.")

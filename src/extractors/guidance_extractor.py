@@ -76,13 +76,21 @@ Required JSON schema (return only this structure, no other keys at top level):
       "unit": "percent | crore_rs | million_rs | years | months | x | null",
       "timeline": "next 2 years",
       "source_document": "latest_concall.pdf",
+      "source_page": 14,
       "quote": "Exact quote from management",
-      "notes": "Optional clarification if needed"
+      "notes": "Optional clarification if needed",
+      "source_type": "transcript | presentation | other",
+      "confidence": "high | medium | low",
+      "extraction_method": "llm_extraction"
     }
   ]
 }
 - category must be one of: direct_financial, operational_modeling, directional_context.
 - type must be one of: explicit, directional.
+- Include source_page (integer) when the document text is marked with page numbers (e.g. --- Page N ---).
+- source_type: transcript, presentation, or other.
+- confidence: high (explicit number), medium (range or strong wording), low (directional only).
+- extraction_method: always "llm_extraction".
 - For directional guidance use "type": "directional" and "value_min": null, "value_max": null.
 - If only one number is given, set both value_min and value_max to that number.
 """
@@ -96,6 +104,7 @@ def build_user_prompt(company_name: str, file_name: str, text: str) -> str:
 Source document: {file_name}
 
 Extract all forward-looking management guidance from the following document text.
+If the text includes page markers (--- Page N ---), set source_page to that page number for each item.
 
 Focus on:
 - direct financial guidance
@@ -126,11 +135,15 @@ def parse_llm_json_safely(raw: str) -> dict[str, Any] | None:
 
 
 def _normalize_guidance_item(g: dict[str, Any], file_name: str) -> dict[str, Any]:
-    """Ensure each guidance item has category, type, source_document, notes."""
+    """Ensure each guidance item has category, type, source_document, source_page, source_type, confidence, extraction_method, notes."""
     g = dict(g)
     g.setdefault("category", "operational_modeling")
     g.setdefault("type", "directional")
     g["source_document"] = g.get("source_document") or file_name
+    g.setdefault("source_page", None)
+    g.setdefault("source_type", "other")
+    g.setdefault("confidence", "medium")
+    g.setdefault("extraction_method", "llm_extraction")
     g.setdefault("notes", None)
     return g
 
@@ -290,7 +303,7 @@ def run_llm_extraction_pipeline(
     from src.parsers.load_documents import extract_text_from_company_folder
     from src.utils.io_helpers import save_extracted_guidance_json, save_intermediate_extraction
 
-    documents = extract_text_from_company_folder(company_folder_path)
+    documents = extract_text_from_company_folder(company_folder_path, with_pages=True)
     if not documents:
         print(f"[extract] No PDFs found in {company_folder_path}")
         out = {"company": company_name, "documents_processed": [], "guidance": [], "conflicts": []}
@@ -413,6 +426,10 @@ def extract_guidance(dossier: dict[str, Any]) -> ExtractedGuidance:
             "timeline": g.get("timeline"),
             "quote": q,
             "source": g.get("source") or g.get("source_document"),
+            "source_page": g.get("source_page"),
+            "source_type": g.get("source_type"),
+            "confidence": g.get("confidence"),
+            "extraction_method": g.get("extraction_method"),
             "notes": g.get("notes"),
         })
         if gtype != "explicit":

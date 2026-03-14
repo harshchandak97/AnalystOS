@@ -12,6 +12,8 @@ class ScenarioResult(BaseModel):
     """Valuation result for one scenario (bear/base/bull)."""
     scenario: str
     projected_eps: float
+    projected_revenue: float = 0.0
+    projected_margin: float = 0.0
     target_price: float
     cagr_pct: float
 
@@ -92,15 +94,36 @@ def run_scenario_model(
     if insufficient_guidance or current_eps <= 0 or target_pe <= 0 or current_price <= 0:
         return out
 
-    def make_result(scenario: str, growth: float) -> ScenarioResult:
+    # Optional revenue/margin for display (current_revenue from dossier if available)
+    current_revenue = getattr(assumptions, "current_revenue", None) if not isinstance(assumptions, dict) else assumptions.get("current_revenue")
+    if isinstance(assumptions, dict):
+        m_bear = float(assumptions.get("bear_margin") or 0)
+        m_base = float(assumptions.get("base_margin") or 0)
+        m_bull = float(assumptions.get("bull_margin") or 0)
+    else:
+        ad = assumptions.model_dump() if hasattr(assumptions, "model_dump") else {}
+        m_bear = float(ad.get("bear_margin") or 0)
+        m_base = float(ad.get("base_margin") or 0)
+        m_bull = float(ad.get("bull_margin") or 0)
+    current_revenue = float(current_revenue or 0)
+
+    def make_result(scenario: str, growth: float, margin_pct: float) -> ScenarioResult:
         proj_eps = _project_eps(current_eps, growth, horizon_years)
         target_price = round(proj_eps * target_pe, 2)
         cagr = round(_cagr_pct(current_price, target_price, horizon_years), 2)
-        return ScenarioResult(scenario=scenario, projected_eps=round(proj_eps, 4), target_price=target_price, cagr_pct=cagr)
+        proj_rev = current_revenue * ((1.0 + growth / 100.0) ** horizon_years) if current_revenue else 0.0
+        return ScenarioResult(
+            scenario=scenario,
+            projected_eps=round(proj_eps, 4),
+            projected_revenue=round(proj_rev, 2),
+            projected_margin=round(margin_pct, 2),
+            target_price=target_price,
+            cagr_pct=cagr,
+        )
 
-    out.bear = make_result("bear", g_bear)
-    out.base = make_result("base", g_base)
-    out.bull = make_result("bull", g_bull)
+    out.bear = make_result("bear", g_bear, m_bear)
+    out.base = make_result("base", g_base, m_base)
+    out.bull = make_result("bull", g_bull, m_bull)
     out.base_cagr_pct = out.base.cagr_pct
     out.base_target_price = out.base.target_price
     out.verdict = _verdict_from_base_cagr(out.base_cagr_pct)

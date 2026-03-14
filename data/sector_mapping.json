@@ -1,0 +1,6 @@
+{
+  "power_equipment": ["QPOWER", "TARIL", "SCHNEIDER"],
+  "Technology": ["acme_corp", "meditech_inc", "nexus_software"],
+  "Healthcare": [],
+  "Consumer": []
+}
