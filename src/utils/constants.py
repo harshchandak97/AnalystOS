@@ -7,6 +7,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 DATA_RAW = os.path.join(PROJECT_ROOT, "data", "raw")
 DATA_PROCESSED = os.path.join(PROJECT_ROOT, "data", "processed")
 OUTPUTS_DIR = os.path.join(PROJECT_ROOT, "outputs")
+INTERMEDIATE_DIR = os.path.join(PROJECT_ROOT, "outputs", "intermediate")
 SAMPLE_INPUT = os.path.join(PROJECT_ROOT, "sample_input")
 SAMPLE_OUTPUT = os.path.join(PROJECT_ROOT, "sample_output")
 

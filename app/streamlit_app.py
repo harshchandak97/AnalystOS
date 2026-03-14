@@ -101,14 +101,32 @@ if results:
     st.header("Extracted guidance & scenario outputs")
     for guidance, output in results:
         with st.expander(f"**{output.company_name or output.company_id}** — {output.verdict}"):
-            # Quotes
-            st.subheader("Guidance quotes")
+            # Guidance table: metric, category, type, value_min/max, timeline, source, quote
+            st.subheader("Guidance")
             if guidance.quotes:
+                rows = []
                 for q in guidance.quotes:
-                    typ = q.get("type", "")
-                    st.caption(f"[{q.get('metric', '')}] {typ}: \"{q.get('quote', '')}\"")
+                    rows.append({
+                        "Metric": q.get("metric", ""),
+                        "Category": q.get("category", ""),
+                        "Type": q.get("type", ""),
+                        "Value min": q.get("value_min"),
+                        "Value max": q.get("value_max"),
+                        "Unit": q.get("unit", ""),
+                        "Timeline": q.get("timeline", ""),
+                        "Source": q.get("source", ""),
+                        "Quote": (q.get("quote", ""))[:120] + ("..." if len(q.get("quote", "")) > 120 else ""),
+                    })
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
             else:
                 st.caption("No guidance quotes.")
+            # Conflicts (if any)
+            if getattr(guidance, "conflicts", None):
+                st.subheader("Conflicts")
+                for c in guidance.conflicts:
+                    st.caption(f"**{c.get('metric', '')}**: {c.get('source_a', '')} vs {c.get('source_b', '')} — {c.get('notes', '')}")
+                    st.text(f"A: \"{c.get('quote_a', '')}\"")
+                    st.text(f"B: \"{c.get('quote_b', '')}\"")
             # Derived assumptions
             st.subheader("Derived assumptions (bear / base / bull)")
             a = guidance.assumptions

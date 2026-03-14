@@ -1,14 +1,80 @@
-"""Load company dossier JSON files from data/processed/."""
+"""Load company dossier JSON files from data/processed/; PDF text extraction from raw folders."""
 
 import os
 from pathlib import Path
 from typing import Any
 
-from src.utils.constants import DATA_PROCESSED
+from src.utils.constants import DATA_PROCESSED, DATA_RAW
 from src.utils.io_helpers import load_json
 
 # Only JSON is used for dossiers in this workflow
 SUPPORTED_EXTENSIONS = (".json",)
+PDF_EXT = ".pdf"
+
+
+def list_pdf_files_in_folder(folder_path: str) -> list[str]:
+    """List full paths of all PDF files in the given folder. Returns empty list if not a dir."""
+    if not folder_path or not os.path.isdir(folder_path):
+        return []
+    out = []
+    for name in sorted(os.listdir(folder_path)):
+        if name.startswith(".") or Path(name).suffix.lower() != PDF_EXT:
+            continue
+        out.append(os.path.join(folder_path, name))
+    return out
+
+
+def _extract_text_pymupdf(pdf_path: str) -> str:
+    """Extract text using PyMuPDF (fitz)."""
+    import fitz
+    doc = fitz.open(pdf_path)
+    parts = []
+    for page in doc:
+        parts.append(page.get_text())
+    doc.close()
+    return "\n".join(parts).strip()
+
+
+def _extract_text_pdfplumber(pdf_path: str) -> str:
+    """Extract text using pdfplumber."""
+    import pdfplumber
+    parts = []
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            t = page.extract_text()
+            if t:
+                parts.append(t)
+    return "\n".join(parts).strip()
+
+
+def extract_text_from_pdf(pdf_path: str) -> str:
+    """
+    Extract text from a single PDF. Uses PyMuPDF (fitz) if available, else pdfplumber.
+    Returns empty string on error or empty PDF.
+    """
+    if not os.path.isfile(pdf_path) or Path(pdf_path).suffix.lower() != PDF_EXT:
+        return ""
+    try:
+        return _extract_text_pymupdf(pdf_path)
+    except Exception:
+        try:
+            return _extract_text_pdfplumber(pdf_path)
+        except Exception:
+            return ""
+
+
+def extract_text_from_company_folder(company_folder_path: str) -> list[dict[str, str]]:
+    """
+    Extract text from all PDFs in a company folder.
+    Returns a list of {"file_name": "x.pdf", "text": "..."}. Skips empty PDFs.
+    """
+    pdf_paths = list_pdf_files_in_folder(company_folder_path)
+    out = []
+    for path in pdf_paths:
+        text = extract_text_from_pdf(path)
+        file_name = os.path.basename(path)
+        out.append({"file_name": file_name, "text": text})
+    return out
 
 
 def load_all_dossiers(data_dir: str | None = None) -> list[dict[str, Any]]:
