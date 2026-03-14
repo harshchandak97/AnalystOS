@@ -1,0 +1,35 @@
+# Dependencies
+venv/
+.venv/
+env/
+node_modules/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+
+# Environment
+.env
+.env.local
+*.local
+
+# Generated outputs (keep folder, ignore contents)
+outputs/*
+!outputs/.gitkeep
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# Build / logs
+dist/
+build/
+*.log
+logs/
+.cache/

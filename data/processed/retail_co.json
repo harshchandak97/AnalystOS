@@ -1,0 +1,14 @@
+{
+  "company_id": "retail_co",
+  "name": "Retail Co",
+  "sector": "Consumer",
+  "raw_quotes": [
+    "We are guiding low-single-digit same-store sales growth.",
+    "Margin pressure expected in H1."
+  ],
+  "guidance": [
+    { "metric": "revenue_growth", "scenario": "bear", "value": 1.0, "unit": "%" },
+    { "metric": "revenue_growth", "scenario": "base", "value": 3.0, "unit": "%" },
+    { "metric": "revenue_growth", "scenario": "bull", "value": 5.0, "unit": "%" }
+  ]
+}

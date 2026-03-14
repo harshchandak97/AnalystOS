@@ -1,0 +1,14 @@
+{
+  "company_id": "acme_corp",
+  "name": "Acme Corp",
+  "sector": "Technology",
+  "raw_quotes": [
+    "We expect revenue growth of 6-8% in FY25.",
+    "Margin expansion of 50-100 bps is achievable."
+  ],
+  "guidance": [
+    { "metric": "revenue_growth", "scenario": "bear", "value": 4.0, "unit": "%", "source_text": "conservative case" },
+    { "metric": "revenue_growth", "scenario": "base", "value": 6.5, "unit": "%", "source_text": "We expect revenue growth of 6-8%" },
+    { "metric": "revenue_growth", "scenario": "bull", "value": 9.0, "unit": "%", "source_text": "upside case" }
+  ]
+}

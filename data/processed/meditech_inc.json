@@ -1,0 +1,14 @@
+{
+  "company_id": "meditech_inc",
+  "name": "MediTech Inc",
+  "sector": "Healthcare",
+  "raw_quotes": [
+    "Double-digit top-line growth remains our target.",
+    "Guidance for the year: 10-12% revenue growth."
+  ],
+  "assumptions": [
+    { "metric": "revenue_growth", "scenario": "bear", "value": 8.0, "unit": "%" },
+    { "metric": "revenue_growth", "scenario": "base", "value": 11.0, "unit": "%" },
+    { "metric": "revenue_growth", "scenario": "bull", "value": 14.0, "unit": "%" }
+  ]
+}
