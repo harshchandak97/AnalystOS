@@ -67,7 +67,11 @@ function LandingSection({ sectors, onSectorSelect }) {
           <button
             onClick={handleContinue}
             disabled={!selectedSector}
-            className="w-full py-4 px-8 bg-blue-600 text-white font-bold text-lg rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg"
+            className={`w-full py-4 px-8 font-bold text-lg rounded-xl focus:outline-none focus:ring-4 focus:ring-blue-300 transition-all duration-200 shadow-lg ${
+              selectedSector
+                ? 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            }`}
             data-testid="continue-button"
           >
             Continue to Stock Selection →
