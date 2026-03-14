@@ -1,124 +1,179 @@
 """
 AnalystOS — Lightweight AI equity analyst workflow.
-Streamlit entrypoint: run from project root with
-  streamlit run app/streamlit_app.py
+Run from project root: streamlit run app/streamlit_app.py
 """
 
 import sys
 from pathlib import Path
 
-# Ensure project root is on path when running from app/
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+import pandas as pd
 import streamlit as st
 
-from src.parsers.load_documents import list_available_companies, load_company_document
+from src.parsers.load_documents import load_all_dossiers, load_dossiers_by_sector
 from src.extractors.guidance_extractor import extract_guidance
 from src.models.scenario_model import run_scenario_model, rank_companies
-from src.utils.constants import DATA_PROCESSED
-from src.utils.io_helpers import save_json, ensure_dir
-from src.utils.constants import OUTPUTS_DIR
+from src.utils.constants import DATA_PROCESSED, OUTPUTS_DIR
+from src.utils.io_helpers import save_ranking_csv, ensure_dir
 
 st.set_page_config(page_title="AnalystOS", layout="wide")
 
+# Session state: loaded dossiers and run results
+if "dossiers" not in st.session_state:
+    st.session_state.dossiers = []
+if "results" not in st.session_state:
+    st.session_state.results = []  # list of (ExtractedGuidance, ScenarioOutput) per company
+
 # ---- Title ----
 st.title("AnalystOS")
-st.caption("Lightweight end-to-end AI equity analyst: guidance → assumptions → bull/base/bear valuation → ranking")
+st.caption("Guidance → assumptions → bull/base/bear valuation → ranking")
 
-# ---- Sidebar: sector / company selector ----
+# ---- Sidebar ----
 with st.sidebar:
-    st.header("Sector / Company")
-    data_dir = DATA_PROCESSED
-    companies = list_available_companies(data_dir)
-    sector_placeholder = st.selectbox(
-        "Sector (placeholder)",
-        ["Technology", "Healthcare", "Consumer"],
+    st.header("Data")
+    sector = st.selectbox(
+        "Sector",
+        ["Technology", "Healthcare", "Consumer", "All"],
         key="sector",
     )
-    company_choice = st.selectbox(
-        "Company",
-        companies if companies else ["(No companies — add JSON to data/processed/)"],
-        key="company",
-    )
+    if st.button("Load sample data", type="primary"):
+        if sector == "All":
+            dossiers = load_all_dossiers(DATA_PROCESSED)
+        else:
+            dossiers = load_dossiers_by_sector(sector, DATA_PROCESSED)
+        st.session_state.dossiers = dossiers
+        st.success(f"Loaded {len(dossiers)} companies")
+        st.session_state.results = []
+    st.divider()
+    st.caption("Data from `data/processed/*.json`. Load then run AnalystOS below.")
 
-# ---- Main area ----
-# 1. Upload / Load Documents
-st.header("Upload / Load Documents")
-if companies and company_choice and not company_choice.startswith("("):
-    doc = load_company_document(company_choice, data_dir)
-    st.success(f"Loaded **{company_choice}** from `data/processed/`")
-    with st.expander("Raw document (preview)"):
-        st.json(doc)
+# ---- Main: loaded companies table ----
+st.header("Loaded companies")
+dossiers = st.session_state.dossiers
+if not dossiers:
+    st.info("Click **Load sample data** in the sidebar to load company dossiers from `data/processed/`.")
 else:
-    st.info("Add sample JSON files to `data/processed/` (e.g. `acme_corp.json`) to load a company.")
-    doc = None
+    table_data = []
+    for d in dossiers:
+        table_data.append({
+            "Company": d.get("company_name") or d.get("company_id", ""),
+            "Sector": d.get("sector", ""),
+            "Current price": d.get("current_price", ""),
+            "Current EPS": d.get("current_eps", ""),
+            "Median PE": d.get("historical_median_pe", ""),
+        })
+    st.dataframe(pd.DataFrame(table_data), use_container_width=True, hide_index=True)
 
-# 2. Extracted Guidance
-st.header("Extracted Guidance")
-if doc:
-    guidance = extract_guidance(doc)
-    st.write(f"**Company:** {guidance.company_id}")
-    st.write("**Assumptions:**")
-    for a in guidance.assumptions:
-        st.write(f"- {a.scenario}: {a.metric} = {a.value} {a.unit}")
-    if guidance.raw_quotes:
-        st.write("**Quotes:**")
-        for q in guidance.raw_quotes:
-            st.caption(q)
-else:
-    st.write("Load a document above to see extracted guidance.")
+# ---- Run AnalystOS ----
+st.header("Run AnalystOS")
+if st.button("Run AnalystOS", type="primary"):
+    if not dossiers:
+        st.warning("Load sample data first.")
+    else:
+        results = []
+        for d in dossiers:
+            guidance = extract_guidance(d)
+            target_pe = d.get("historical_median_pe") or 20.0
+            current_price = float(d.get("current_price") or 0)
+            current_eps = float(d.get("current_eps") or 0)
+            # Pass assumptions as dict for consistent reading in scenario model
+            assumptions_dict = guidance.assumptions.model_dump() if hasattr(guidance.assumptions, "model_dump") else guidance.assumptions
+            output = run_scenario_model(
+                company_id=d.get("company_id", ""),
+                company_name=d.get("company_name", ""),
+                current_price=current_price,
+                current_eps=current_eps,
+                target_pe=float(target_pe),
+                assumptions=assumptions_dict,
+                insufficient_guidance=guidance.insufficient_guidance,
+            )
+            results.append((guidance, output))
+        st.session_state.results = results
+        st.success("Done. See extracted guidance, scenario outputs, and ranking below.")
 
-# 3. Scenario Outputs
-st.header("Scenario Outputs")
-if doc:
-    guidance = extract_guidance(doc)
-    assumptions = [a.model_dump() for a in guidance.assumptions]
-    verdict = run_scenario_model(doc["company_id"], assumptions)
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Bear — Target", verdict.bear.target_price)
-        st.caption(f"CAGR: {verdict.bear.cagr}%")
-    with col2:
-        st.metric("Base — Target", verdict.base.target_price)
-        st.caption(f"CAGR: {verdict.base.cagr}%")
-    with col3:
-        st.metric("Bull — Target", verdict.bull.target_price)
-        st.caption(f"CAGR: {verdict.bull.cagr}%")
-    st.write(f"**Verdict:** {verdict.verdict}")
-else:
-    st.write("Load a document to see scenario outputs.")
+results = st.session_state.results
 
-# 4. Final Ranking
-st.header("Final Ranking")
-if doc and companies and not company_choice.startswith("("):
-    # Build verdicts for all loaded companies for ranking demo
-    verdicts = []
-    for cid in companies:
-        d = load_company_document(cid, data_dir)
-        g = extract_guidance(d)
-        v = run_scenario_model(cid, [a.model_dump() for a in g.assumptions])
-        verdicts.append(v)
-    ranked = rank_companies(verdicts)
-    rows = [
-        {
+# ---- Per-company: guidance quotes, assumptions, scenario table ----
+if results:
+    st.header("Extracted guidance & scenario outputs")
+    for guidance, output in results:
+        with st.expander(f"**{output.company_name or output.company_id}** — {output.verdict}"):
+            # Quotes
+            st.subheader("Guidance quotes")
+            if guidance.quotes:
+                for q in guidance.quotes:
+                    typ = q.get("type", "")
+                    st.caption(f"[{q.get('metric', '')}] {typ}: \"{q.get('quote', '')}\"")
+            else:
+                st.caption("No guidance quotes.")
+            # Derived assumptions
+            st.subheader("Derived assumptions (bear / base / bull)")
+            a = guidance.assumptions
+            rev = f"Revenue growth %: {a.bear_revenue_growth} / {a.base_revenue_growth} / {a.bull_revenue_growth}"
+            margin = f"Margin %: {a.bear_margin} / {a.base_margin} / {a.bull_margin}"
+            st.write(rev)
+            st.write(margin)
+            # Scenario valuation table
+            st.subheader("Scenario valuation")
+            if output.bear and output.base and output.bull:
+                scenario_df = pd.DataFrame([
+                    {
+                        "Scenario": "Bear",
+                        "Projected EPS": output.bear.projected_eps,
+                        "Target price": output.bear.target_price,
+                        "CAGR %": output.bear.cagr_pct,
+                    },
+                    {
+                        "Scenario": "Base",
+                        "Projected EPS": output.base.projected_eps,
+                        "Target price": output.base.target_price,
+                        "CAGR %": output.base.cagr_pct,
+                    },
+                    {
+                        "Scenario": "Bull",
+                        "Projected EPS": output.bull.projected_eps,
+                        "Target price": output.bull.target_price,
+                        "CAGR %": output.bull.cagr_pct,
+                    },
+                ])
+                st.dataframe(scenario_df, use_container_width=True, hide_index=True)
+            else:
+                st.caption("Insufficient data for valuation.")
+
+# ---- Final ranking ----
+st.header("Final ranking")
+if results:
+    outputs = [r[1] for r in results]
+    ranked = rank_companies(outputs)
+    rows = []
+    for i, o in enumerate(ranked):
+        bear_cagr = o.bear.cagr_pct if o.bear else None
+        base_cagr = o.base_cagr_pct
+        bull_cagr = o.bull.cagr_pct if o.bull else None
+        rows.append({
             "Rank": i + 1,
-            "Company": v.company_id,
-            "Expected CAGR %": v.expected_cagr,
-            "Target Price": v.target_price,
-            "Verdict": v.verdict,
-        }
-        for i, v in enumerate(ranked)
-    ]
-    st.dataframe(rows, use_container_width=True, hide_index=True)
-    # Optional: save to outputs
+            "Company": o.company_name or o.company_id,
+            "Base CAGR %": base_cagr,
+            "Bull CAGR %": bull_cagr,
+            "Bear CAGR %": bear_cagr,
+            "Target price": o.base_target_price,
+            "Verdict": o.verdict,
+        })
+    rank_df = pd.DataFrame(rows)
+    st.dataframe(rank_df, use_container_width=True, hide_index=True)
+
+    # Save to outputs and offer download
     ensure_dir(OUTPUTS_DIR)
-    out_path = Path(OUTPUTS_DIR) / "ranking_output.json"
-    save_json(
-        [{"company_id": v.company_id, "expected_cagr": v.expected_cagr, "target_price": v.target_price, "verdict": v.verdict} for v in ranked],
-        str(out_path),
+    csv_path = save_ranking_csv(rank_df, "ranking_results.csv")
+    st.download_button(
+        "Download ranking (CSV)",
+        data=rank_df.to_csv(index=False).encode("utf-8"),
+        file_name="ranking_results.csv",
+        mime="text/csv",
     )
-    st.caption(f"Output saved to `{out_path}`")
+    st.caption(f"Saved to `{csv_path}`")
 else:
-    st.write("Load at least one company to see the ranking table.")
+    st.write("Run AnalystOS to see the ranking.")

@@ -7,6 +7,8 @@ from typing import Any
 
 import pandas as pd
 
+from src.utils.constants import OUTPUTS_DIR
+
 
 def load_json(path: str) -> dict[str, Any]:
     """Load a JSON file and return its contents as a dict."""
@@ -35,3 +37,14 @@ def save_csv(df: pd.DataFrame, path: str) -> None:
 def ensure_dir(path: str) -> None:
     """Ensure a directory exists."""
     os.makedirs(path, exist_ok=True)
+
+
+def save_ranking_csv(df: pd.DataFrame, filename: str = "ranking_results.csv") -> str:
+    """
+    Save a ranking DataFrame to outputs/<filename>.
+    Returns the full path used.
+    """
+    ensure_dir(OUTPUTS_DIR)
+    path = os.path.join(OUTPUTS_DIR, filename)
+    save_csv(df, path)
+    return path

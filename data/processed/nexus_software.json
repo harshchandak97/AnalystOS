@@ -1,0 +1,28 @@
+{
+  "company_id": "nexus_software",
+  "company_name": "Nexus Software",
+  "sector": "Technology",
+  "current_price": 42.00,
+  "current_eps": 1.90,
+  "historical_median_pe": 20.0,
+  "management_guidance": [
+    {
+      "metric": "revenue_growth",
+      "type": "explicit",
+      "value_min": 3.0,
+      "value_max": 6.0,
+      "timeline": "FY25",
+      "source": "Q4 call",
+      "quote": "Full-year revenue growth guidance of 3% to 6%."
+    },
+    {
+      "metric": "margin",
+      "type": "directional",
+      "value_min": null,
+      "value_max": null,
+      "timeline": "FY25",
+      "source": "Q4 call",
+      "quote": "We are focused on improving operating leverage over time."
+    }
+  ]
+}

@@ -1,14 +1,28 @@
 {
   "company_id": "meditech_inc",
-  "name": "MediTech Inc",
-  "sector": "Healthcare",
-  "raw_quotes": [
-    "Double-digit top-line growth remains our target.",
-    "Guidance for the year: 10-12% revenue growth."
-  ],
-  "assumptions": [
-    { "metric": "revenue_growth", "scenario": "bear", "value": 8.0, "unit": "%" },
-    { "metric": "revenue_growth", "scenario": "base", "value": 11.0, "unit": "%" },
-    { "metric": "revenue_growth", "scenario": "bull", "value": 14.0, "unit": "%" }
+  "company_name": "MediTech Inc",
+  "sector": "Technology",
+  "current_price": 120.00,
+  "current_eps": 5.80,
+  "historical_median_pe": 24.0,
+  "management_guidance": [
+    {
+      "metric": "revenue_growth",
+      "type": "explicit",
+      "value_min": 10.0,
+      "value_max": 14.0,
+      "timeline": "FY25",
+      "source": "Q3 earnings",
+      "quote": "We are guiding 10% to 14% revenue growth for FY25."
+    },
+    {
+      "metric": "margin",
+      "type": "explicit",
+      "value_min": 22.0,
+      "value_max": 25.0,
+      "timeline": "FY25",
+      "source": "Q3 earnings",
+      "quote": "Non-GAAP operating margin expected at 22% to 25%."
+    }
   ]
 }

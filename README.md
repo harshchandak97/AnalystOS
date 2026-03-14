@@ -15,9 +15,9 @@ Analysts spend hours reading earnings calls and filings to pull out management g
 1. **Load documents** — Read preprocessed company data from local files (JSON/CSV) in `data/processed/` (or `data/raw/`).
 2. **Extract guidance** — Parse management guidance from documents into structured assumptions (e.g. revenue growth by scenario).
 3. **Run scenario model** — Apply bull/base/bear assumptions to a simple valuation model; compute target price and expected CAGR per scenario.
-4. **Rank & output** — Rank companies by expected CAGR (or chosen metric), show target price and verdict (e.g. Buy/Hold/Sell), and optionally save results to `outputs/`.
+4. **Rank & output** — Rank companies by base-case CAGR; show target price and verdict; save CSV to `outputs/` and offer download.
 
-All steps are stubbed so the app runs end-to-end; you can replace extractors and the model with real logic (e.g. OpenAI) as you build.
+**Verdicts (rule-based):** High Conviction (base CAGR >20%), Watchlist (10–20%), Avoid (<10%), Insufficient Data (no explicit revenue growth guidance).
 
 ---
 
@@ -74,15 +74,19 @@ AnalystOS/
 From the **project root**:
 
 ```bash
+# Create venv and install deps (first time)
+python3 -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+
+# Run the app
 streamlit run app/streamlit_app.py
 ```
 
-The app opens in the browser. Use the sidebar to pick a sector (placeholder) and company. The main area shows:
+The app opens in the browser. Click **Load sample data** in the sidebar (choose sector or All), then **Run AnalystOS**. The main area shows:
 
-- **Upload / Load Documents** — Which company is loaded from `data/processed/`.
-- **Extracted Guidance** — Assumptions and quotes derived from the document.
-- **Scenario Outputs** — Bear/base/bull target price and CAGR.
-- **Final Ranking** — Table of all loaded companies ranked by expected CAGR, with output saved to `outputs/ranking_output.json`.
+- **Loaded companies** — Table of dossiers from `data/processed/`.
+- **Extracted guidance & scenario outputs** — Per company: guidance quotes, bear/base/bull assumptions, scenario valuation table.
+- **Final ranking** — Companies ranked by base CAGR; download CSV to `outputs/ranking_results.csv`.
 
 ---
 

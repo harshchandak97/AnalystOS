@@ -1,14 +1,37 @@
 {
   "company_id": "acme_corp",
-  "name": "Acme Corp",
+  "company_name": "Acme Corp",
   "sector": "Technology",
-  "raw_quotes": [
-    "We expect revenue growth of 6-8% in FY25.",
-    "Margin expansion of 50-100 bps is achievable."
-  ],
-  "guidance": [
-    { "metric": "revenue_growth", "scenario": "bear", "value": 4.0, "unit": "%", "source_text": "conservative case" },
-    { "metric": "revenue_growth", "scenario": "base", "value": 6.5, "unit": "%", "source_text": "We expect revenue growth of 6-8%" },
-    { "metric": "revenue_growth", "scenario": "bull", "value": 9.0, "unit": "%", "source_text": "upside case" }
+  "current_price": 85.50,
+  "current_eps": 4.20,
+  "historical_median_pe": 22.0,
+  "management_guidance": [
+    {
+      "metric": "revenue_growth",
+      "type": "explicit",
+      "value_min": 5.0,
+      "value_max": 9.0,
+      "timeline": "FY25",
+      "source": "Q4 earnings call",
+      "quote": "We expect revenue growth of 5% to 9% in FY25."
+    },
+    {
+      "metric": "revenue_growth",
+      "type": "directional",
+      "value_min": null,
+      "value_max": null,
+      "timeline": "FY26",
+      "source": "Investor day",
+      "quote": "We see accelerating growth in cloud and enterprise."
+    },
+    {
+      "metric": "margin",
+      "type": "explicit",
+      "value_min": 18.0,
+      "value_max": 21.0,
+      "timeline": "FY25",
+      "source": "Q4 earnings call",
+      "quote": "Operating margin guidance of 18% to 21% for the full year."
+    }
   ]
 }
