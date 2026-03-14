@@ -22,10 +22,23 @@ def load_financial_json(slug: str, financials_dir: str | None = None) -> dict[st
     """
     Load historical financials from data/financials/<slug>.json.
     Returns None if file missing or invalid. Logs path and loaded keys for debug.
+    Handles case-insensitive matching (e.g. qpower matches QPOWER.json).
     """
     dir_path = financials_dir or DATA_FINANCIALS
     path = os.path.join(dir_path, slug + ".json")
     print(f"[financials] Loading {path}")
+    
+    # Try exact match first
+    if not os.path.isfile(path):
+        print(f"[financials] Exact match not found, trying case-insensitive...")
+        # Try case-insensitive match
+        if os.path.isdir(dir_path):
+            for f in os.listdir(dir_path):
+                if f.endswith(".json") and Path(f).stem.lower() == slug.lower():
+                    path = os.path.join(dir_path, f)
+                    print(f"[financials] Found case-insensitive match: {path}")
+                    break
+    
     if not os.path.isfile(path):
         print(f"[financials] File does not exist: {path}")
         return None
