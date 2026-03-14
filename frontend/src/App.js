@@ -3,18 +3,29 @@ import axios from 'axios';
 import './App.css';
 
 // Components
-import HeroSection from './components/HeroSection';
-import AnalysisPipeline from './components/AnalysisPipeline';
-import SectorRanking from './components/SectorRanking';
-import CompanyDeepDive from './components/CompanyDeepDive';
-import SectorSelector from './components/SectorSelector';
+import LandingSection from './components/LandingSection';
+import StockSelection from './components/StockSelection';
+import AnimatedPipeline from './components/AnimatedPipeline';
+import ResultsPage from './components/ResultsPage';
 
 const API_BASE = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
 
 function App() {
+  // App state
+  const [currentScreen, setCurrentScreen] = useState('landing'); // landing | stockSelection | running | results
+  
+  // Selection state
   const [sectors, setSectors] = useState([]);
-  const [selectedSector, setSelectedSector] = useState('power_equipment');
-  const [loading, setLoading] = useState(false);
+  const [selectedSector, setSelectedSector] = useState('');
+  const [availableStocks, setAvailableStocks] = useState([]);
+  const [selectedStocks, setSelectedStocks] = useState([]);
+  
+  // Analysis state
+  const [pipelineSteps, setPipelineSteps] = useState([]);
+  const [activityLog, setActivityLog] = useState([]);
+  const [currentStep, setCurrentStep] = useState(0);
+  
+  // Results state
   const [analysisResult, setAnalysisResult] = useState(null);
   const [selectedCompany, setSelectedCompany] = useState(null);
 
@@ -25,38 +36,134 @@ function App() {
 
   const fetchSectors = async () => {
     try {
-      console.log('Fetching sectors from:', `${API_BASE}/api/sectors`);
       const response = await axios.get(`${API_BASE}/api/sectors`);
-      console.log('Sectors response:', response.data);
       setSectors(response.data.sectors || []);
     } catch (error) {
       console.error('Error fetching sectors:', error);
-      // Fallback to default sectors if API fails
       setSectors(['power_equipment', 'Technology', 'Healthcare', 'Consumer']);
     }
   };
 
-  const runAnalysis = async () => {
-    setLoading(true);
-    setAnalysisResult(null);
-    setSelectedCompany(null);
+  const handleSectorSelect = async (sector) => {
+    setSelectedSector(sector);
     
+    // Fetch companies in sector
+    try {
+      const response = await axios.get(`${API_BASE}/api/sectors/${sector}/dossiers`);
+      setAvailableStocks(response.data.dossiers || []);
+      setCurrentScreen('stockSelection');
+    } catch (error) {
+      console.error('Error fetching stocks:', error);
+    }
+  };
+
+  const handleStockToggle = (stockId) => {
+    setSelectedStocks(prev => {
+      if (prev.includes(stockId)) {
+        return prev.filter(id => id !== stockId);
+      } else {
+        return [...prev, stockId];
+      }
+    });
+  };
+
+  const handleRunAnalysis = async () => {
+    if (selectedStocks.length === 0) {
+      alert('Please select at least one stock to analyze');
+      return;
+    }
+
+    // Initialize pipeline
+    const steps = [
+      { id: 'fetch_documents', label: 'Fetching company documents', status: 'pending' },
+      { id: 'load_financials', label: 'Loading past financials', status: 'pending' },
+      { id: 'extract_text', label: 'Extracting text from PDFs', status: 'pending' },
+      { id: 'extract_guidance', label: 'Extracting management guidance', status: 'pending' },
+      { id: 'consolidate_evidence', label: 'Consolidating evidence', status: 'pending' },
+      { id: 'build_assumptions', label: 'Building assumptions', status: 'pending' },
+      { id: 'run_valuation', label: 'Running bull/base/bear valuation', status: 'pending' },
+      { id: 'rank_companies', label: 'Ranking selected companies', status: 'pending' },
+      { id: 'link_sources', label: 'Linking assumptions to source evidence', status: 'pending' },
+    ];
+    
+    setPipelineSteps(steps);
+    setActivityLog([]);
+    setCurrentStep(0);
+    setCurrentScreen('running');
+
+    // Animate pipeline steps
+    await animatePipeline(steps);
+  };
+
+  const animatePipeline = async (steps) => {
+    // Simulate step-by-step execution
+    for (let i = 0; i < steps.length; i++) {
+      // Update step to running
+      setPipelineSteps(prev => prev.map((step, idx) => 
+        idx === i ? { ...step, status: 'running' } : step
+      ));
+      setCurrentStep(i);
+
+      // Add activity log based on step
+      await addActivityForStep(steps[i].id, i);
+
+      // Wait for step to "complete"
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // Mark step as completed
+      setPipelineSteps(prev => prev.map((step, idx) => 
+        idx === i ? { ...step, status: 'completed' } : step
+      ));
+    }
+
+    // After all steps, run actual analysis
+    await runActualAnalysis();
+  };
+
+  const addActivityForStep = async (stepId, index) => {
+    const activities = {
+      fetch_documents: [
+        `Found ${selectedStocks.length} selected companies in ${selectedSector}`,
+        ...selectedStocks.map(id => `Loaded documents for ${id.toUpperCase()}`)
+      ],
+      load_financials: selectedStocks.map(id => `Loaded ${id.toUpperCase()} financial history`),
+      extract_text: selectedStocks.map(id => `Loaded ${id.toUpperCase()}_latest_transcript.pdf`),
+      extract_guidance: selectedStocks.map(id => `Extracted forward-looking statements from ${id.toUpperCase()}`),
+      consolidate_evidence: selectedStocks.map(id => `Consolidated evidence for ${id.toUpperCase()}`),
+      build_assumptions: selectedStocks.map(id => `Built base-case assumptions for ${id.toUpperCase()}`),
+      run_valuation: selectedStocks.map(id => `Calculated scenario valuation for ${id.toUpperCase()}`),
+      rank_companies: [`Ranked ${selectedStocks.length} companies by base-case CAGR`],
+      link_sources: ['Linked all assumptions to source evidence']
+    };
+
+    const logs = activities[stepId] || [];
+    for (const log of logs) {
+      await new Promise(resolve => setTimeout(resolve, 300));
+      setActivityLog(prev => [...prev, log]);
+    }
+  };
+
+  const runActualAnalysis = async () => {
     try {
       const response = await axios.post(`${API_BASE}/api/analysis/run`, {
         sector: selectedSector,
+        selected_companies: selectedStocks,
         run_extraction: false,
       });
+      
       setAnalysisResult(response.data);
       
       // Auto-select first company
       if (response.data.company_results && response.data.company_results.length > 0) {
         setSelectedCompany(response.data.company_results[0]);
       }
+      
+      // Move to results screen
+      setCurrentScreen('results');
     } catch (error) {
       console.error('Error running analysis:', error);
-      alert('Analysis failed. Check console for details.');
-    } finally {
-      setLoading(false);
+      alert('Analysis failed. Please try again.');
+      setCurrentScreen('stockSelection');
     }
   };
 
@@ -69,96 +176,50 @@ function App() {
     }
   };
 
-  // Calculate hero metrics
-  const heroMetrics = analysisResult ? {
-    topOpportunity: analysisResult.ranked?.[0]?.company_name || 'N/A',
-    companiesAnalyzed: analysisResult.company_results?.length || 0,
-    bestCagr: analysisResult.ranked?.[0]?.base_cagr_pct || 0,
-  } : null;
+  const handleBackToSelection = () => {
+    setCurrentScreen('stockSelection');
+    setAnalysisResult(null);
+    setSelectedCompany(null);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Top Navigation */}
-      <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-8">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">AnalystOS</h1>
-                <p className="text-xs text-gray-500">AI-native sector analyst workflow</p>
-              </div>
-            </div>
-            
-            <SectorSelector
-              sectors={sectors}
-              selectedSector={selectedSector}
-              onSectorChange={setSelectedSector}
-              onRunAnalysis={runAnalysis}
-              loading={loading}
-            />
-          </div>
-        </div>
-      </nav>
+      {/* Render appropriate screen */}
+      {currentScreen === 'landing' && (
+        <LandingSection
+          sectors={sectors}
+          onSectorSelect={handleSectorSelect}
+        />
+      )}
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Hero Section */}
-        {heroMetrics && (
-          <HeroSection metrics={heroMetrics} />
-        )}
+      {currentScreen === 'stockSelection' && (
+        <StockSelection
+          sector={selectedSector}
+          availableStocks={availableStocks}
+          selectedStocks={selectedStocks}
+          onStockToggle={handleStockToggle}
+          onRunAnalysis={handleRunAnalysis}
+          onBack={() => setCurrentScreen('landing')}
+        />
+      )}
 
-        {/* Loading State */}
-        {loading && (
-          <div className="flex items-center justify-center py-20">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="mt-4 text-gray-600 font-medium">Running analysis...</p>
-            </div>
-          </div>
-        )}
+      {currentScreen === 'running' && (
+        <AnimatedPipeline
+          steps={pipelineSteps}
+          activityLog={activityLog}
+          currentStep={currentStep}
+        />
+      )}
 
-        {/* Analysis Pipeline */}
-        {analysisResult && !loading && (
-          <>
-            <AnalysisPipeline
-              stepStatuses={analysisResult.step_statuses}
-              activityLog={analysisResult.activity_log}
-            />
-
-            {/* Sector Ranking */}
-            <SectorRanking
-              ranked={analysisResult.ranked}
-              companyResults={analysisResult.company_results}
-              onCompanySelect={handleCompanySelect}
-              selectedCompanyId={selectedCompany?.company_id}
-            />
-
-            {/* Company Deep Dive */}
-            {selectedCompany && (
-              <CompanyDeepDive
-                company={selectedCompany}
-                rank={analysisResult.ranked?.findIndex(r => r.company_id === selectedCompany.company_id) + 1}
-                total={analysisResult.ranked?.length || 0}
-              />
-            )}
-          </>
-        )}
-
-        {/* Empty State */}
-        {!loading && !analysisResult && (
-          <div className="text-center py-20">
-            <div className="mx-auto h-24 w-24 text-gray-400">
-              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            </div>
-            <h3 className="mt-4 text-lg font-medium text-gray-900">No analysis yet</h3>
-            <p className="mt-2 text-sm text-gray-500">
-              Select a sector and click "Run Analysis" to begin
-            </p>
-          </div>
-        )}
-      </div>
+      {currentScreen === 'results' && analysisResult && (
+        <ResultsPage
+          sector={selectedSector}
+          analysisResult={analysisResult}
+          selectedCompany={selectedCompany}
+          onCompanySelect={handleCompanySelect}
+          onBackToSelection={handleBackToSelection}
+        />
+      )}
     </div>
   );
 }

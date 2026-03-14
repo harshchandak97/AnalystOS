@@ -63,11 +63,13 @@ def run_full_analysis(
     *,
     run_extraction: bool = True,
     api_key: str | None = None,
+    selected_companies: list[str] | None = None,
     on_step: Callable[[str, str], None] | None = None,
     on_activity: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """
     Run the full pipeline for the sector. Optionally run LLM extraction for companies with PDFs but no processed guidance.
+    selected_companies: Optional list of company IDs to filter analysis to.
     on_step(step_id, status): status in pending|running|completed|failed
     on_activity(message): human-readable log line.
     Returns { "step_statuses": {...}, "activity_log": [...], "ranked": [...], "company_results": [...], "dossiers": [...] }
@@ -88,6 +90,12 @@ def run_full_analysis(
     # 1. Fetch sector documents
     step("fetch_documents", "running")
     dossiers = fetch_sector_dossiers(sector)
+    
+    # Filter by selected companies if provided
+    if selected_companies:
+        dossiers = [d for d in dossiers if d.get("company_id") in selected_companies]
+        log(f"Filtering to {len(selected_companies)} selected companies")
+    
     if not dossiers:
         log("No company folders found for selected sector.")
         step("fetch_documents", "completed")

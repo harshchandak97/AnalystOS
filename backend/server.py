@@ -40,6 +40,7 @@ analysis_cache: dict[str, Any] = {}
 
 class RunAnalysisRequest(BaseModel):
     sector: str
+    selected_companies: list[str] | None = None  # List of company IDs to analyze
     run_extraction: bool = False
     api_key: str | None = None
 
@@ -90,11 +91,12 @@ async def get_sector_dossiers(sector: str):
 
 @app.post("/api/analysis/run")
 async def run_analysis(request: RunAnalysisRequest):
-    """Run full AnalystOS pipeline for a sector."""
+    """Run full AnalystOS pipeline for a sector with optional company filtering."""
     sector = request.sector
+    selected_companies = request.selected_companies
     
-    # Check if we have cached result
-    cache_key = f"{sector}_{request.run_extraction}"
+    # Create cache key including selected companies
+    cache_key = f"{sector}_{','.join(sorted(selected_companies)) if selected_companies else 'all'}_{request.run_extraction}"
     if cache_key in analysis_cache:
         return analysis_cache[cache_key]
     
@@ -103,6 +105,7 @@ async def run_analysis(request: RunAnalysisRequest):
             sector,
             run_extraction=request.run_extraction,
             api_key=request.api_key,
+            selected_companies=selected_companies,  # Pass selected companies to analysis
         )
         
         # Convert result to JSON-serializable format
