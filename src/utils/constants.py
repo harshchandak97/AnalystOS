@@ -6,6 +6,7 @@ import os
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DATA_RAW = os.path.join(PROJECT_ROOT, "data", "raw")
 DATA_PROCESSED = os.path.join(PROJECT_ROOT, "data", "processed")
+DATA_FINANCIALS = os.path.join(PROJECT_ROOT, "data", "financials")
 SECTOR_MAPPING_PATH = os.path.join(PROJECT_ROOT, "data", "sector_mapping.json")
 OUTPUTS_DIR = os.path.join(PROJECT_ROOT, "outputs")
 INTERMEDIATE_DIR = os.path.join(PROJECT_ROOT, "outputs", "intermediate")

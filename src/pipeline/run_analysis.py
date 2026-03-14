@@ -11,7 +11,13 @@ from src.extractors.guidance_extractor import (
     run_llm_extraction_pipeline,
 )
 from src.models.scenario_model import run_scenario_model, rank_companies
-from src.utils.io_helpers import save_extracted_guidance_json, load_json
+from src.utils.io_helpers import (
+    save_extracted_guidance_json,
+    load_json,
+    load_financial_json,
+    load_processed_json,
+    to_slug,
+)
 import os
 from src.utils.constants import DATA_PROCESSED
 
@@ -126,42 +132,63 @@ def run_full_analysis(
     if step_statuses.get("extract_guidance") == "pending":
         step("extract_guidance", "completed")  # skipped (all had guidance)
 
-    # Reload dossiers from processed so we have latest guidance + financials
+    # Load financials + processed per company, build merged object (normalized slug)
     step("consolidate_evidence", "running")
-    company_results = []
+    merged_dossiers: list[dict[str, Any]] = []
     for d in dossiers:
         cid = d.get("company_id", "")
-        try:
-            proc = load_json(os.path.join(DATA_PROCESSED, cid + ".json"))
-            proc.setdefault("company_id", cid)
-            proc.setdefault("company_name", d.get("company_name", cid))
-            # Use fallbacks for valuation when financials missing (e.g. guidance-only JSON)
-            proc.setdefault("current_price", d.get("current_price", 100.0))
-            proc.setdefault("current_eps", d.get("current_eps", 5.0))
-            proc.setdefault("historical_median_pe", d.get("historical_median_pe", 20.0))
-        except Exception:
-            proc = dict(d)
-            proc.setdefault("current_price", 100.0)
-            proc.setdefault("current_eps", 5.0)
-            proc.setdefault("historical_median_pe", 20.0)
-        proc["folder_path"] = d.get("folder_path", "")
-        proc["pdf_files"] = d.get("pdf_files", [])
-        dossiers[dossiers.index(d)] = proc
+        slug = to_slug(cid)
+        financials = load_financial_json(slug)
+        processed = load_processed_json(slug)
+        guidance_list = (processed or {}).get("guidance") or (processed or {}).get("management_guidance") or []
+        conflicts_list = (processed or {}).get("conflicts") or []
+        company_name = (processed or {}).get("company") or (processed or {}).get("company_name") or d.get("company_name") or cid
+        # Pull valuation inputs from financials first, then processed, then fallback
+        def _from_financials(key: str, default: Any = None) -> Any:
+            if not financials:
+                return default
+            v = financials.get(key)
+            if v is not None:
+                return v
+            meta = financials.get("metadata") or {}
+            return meta.get(key, default)
+        current_price = _from_financials("current_price") or (processed or {}).get("current_price") or d.get("current_price") or 100.0
+        current_eps = _from_financials("current_eps") or (processed or {}).get("current_eps") or d.get("current_eps") or 5.0
+        historical_median_pe = _from_financials("historical_median_pe") or (processed or {}).get("historical_median_pe") or d.get("historical_median_pe") or 20.0
+        merged = {
+            "company": company_name,
+            "company_id": slug,
+            "company_name": company_name,
+            "slug": slug,
+            "financials": financials or {},
+            "guidance": guidance_list,
+            "conflicts": conflicts_list,
+            "folder_path": d.get("folder_path", ""),
+            "pdf_files": d.get("pdf_files", []),
+            "current_price": float(current_price),
+            "current_eps": float(current_eps),
+            "historical_median_pe": float(historical_median_pe),
+        }
+        merged_keys = list(merged.keys())
+        print(f"[merge] Built merged object for {slug} with keys: {merged_keys}")
+        log(f"Merged {slug}: financials={'yes' if financials else 'no'}, guidance={len(guidance_list)} items")
+        merged_dossiers.append(merged)
     log("Consolidated evidence across documents")
     step("consolidate_evidence", "completed")
 
-    # Build assumptions and run valuation per company
+    # Build assumptions and run valuation per company (using merged object)
     step("build_assumptions", "running")
     step("run_valuation", "running")
-    for d in dossiers:
-        guidance = extract_guidance(d)
+    company_results = []
+    for merged in merged_dossiers:
+        guidance = extract_guidance(merged)
         assumptions_dict = guidance.assumptions.model_dump() if hasattr(guidance.assumptions, "model_dump") else guidance.assumptions
-        target_pe = float(d.get("historical_median_pe") or 20)
-        current_price = float(d.get("current_price") or 0)
-        current_eps = float(d.get("current_eps") or 0)
+        target_pe = float(merged.get("historical_median_pe") or 20)
+        current_price = float(merged.get("current_price") or 0)
+        current_eps = float(merged.get("current_eps") or 0)
         output = run_scenario_model(
-            company_id=d.get("company_id", ""),
-            company_name=d.get("company_name", ""),
+            company_id=merged.get("company_id", ""),
+            company_name=merged.get("company_name", ""),
             current_price=current_price,
             current_eps=current_eps,
             target_pe=target_pe,
@@ -171,7 +198,8 @@ def run_full_analysis(
         guidance_strength = _guidance_strength(guidance)
         confidence = _confidence(guidance, output)
         company_results.append({
-            "dossier": d,
+            "merged": merged,
+            "dossier": merged,
             "guidance": guidance,
             "output": output,
             "guidance_strength": guidance_strength,
@@ -197,5 +225,5 @@ def run_full_analysis(
         "activity_log": activity_log,
         "ranked": ranked,
         "company_results": company_results,
-        "dossiers": dossiers,
+        "dossiers": merged_dossiers,
     }

@@ -164,10 +164,20 @@ if result and result.get("company_results"):
         cr = next((r for r in company_results if (r["output"].company_name or r["output"].company_id) == selected), None)
         if cr:
             guidance, output = cr["guidance"], cr["output"]
-            dossier = cr.get("dossier", {})
+            merged = cr.get("merged") or cr.get("dossier", {})
             rank = next((i + 1 for i, o in enumerate(result["ranked"]) if o.company_id == output.company_id), 0)
             total = len(result["ranked"])
-            tab1, tab2, tab3, tab4 = st.tabs(["Evidence", "Assumptions", "Valuation", "Analyst Note"])
+
+            # ---- Merged Company Object Check (debug) ----
+            with st.expander("**Merged Company Object Check**", expanded=False):
+                has_financials = bool(merged.get("financials"))
+                st.caption(f"**Financials exist:** {has_financials}")
+                st.caption(f"**Top-level merged keys:** {list(merged.keys())}")
+                st.caption(f"**Guidance exists:** {bool(merged.get('guidance'))} ({len(merged.get('guidance') or [])} items)")
+                st.caption(f"**Current price (from merged/financials):** {merged.get('current_price', '—')}")
+                st.caption(f"**Company name (from merged):** {merged.get('company_name') or merged.get('company', '—')}")
+
+            tab1, tab2, tab3, tab4, tab5 = st.tabs(["Evidence", "Assumptions", "Valuation", "Analyst Note", "Historical Financials"])
 
             with tab1:
                 st.subheader("Evidence")
@@ -214,5 +224,13 @@ if result and result.get("company_results"):
                     key_evidence, len(getattr(guidance, "conflicts", []) or []),
                 )
                 st.markdown(note)
+
+            with tab5:
+                st.subheader("Historical Financials")
+                financials = merged.get("financials") or {}
+                if financials:
+                    st.json(financials)
+                else:
+                    st.caption("No financials loaded. Add `data/financials/<slug>.json` for this company (e.g. data/financials/qpower.json).")
 else:
     st.info("Run AnalystOS to see company deep dive.")

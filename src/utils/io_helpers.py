@@ -7,7 +7,57 @@ from typing import Any
 
 import pandas as pd
 
-from src.utils.constants import OUTPUTS_DIR, DATA_PROCESSED, INTERMEDIATE_DIR
+from src.utils.constants import OUTPUTS_DIR, DATA_PROCESSED, INTERMEDIATE_DIR, DATA_FINANCIALS
+
+
+def to_slug(company_id: str) -> str:
+    """Normalize company name to lowercase slug (e.g. QPOWER -> qpower, TARIL -> taril)."""
+    if not company_id:
+        return ""
+    s = "".join(c if c.isalnum() or c in "._-" else "_" for c in company_id.strip())
+    return s.lower() or "company"
+
+
+def load_financial_json(slug: str, financials_dir: str | None = None) -> dict[str, Any] | None:
+    """
+    Load historical financials from data/financials/<slug>.json.
+    Returns None if file missing or invalid. Logs path and loaded keys for debug.
+    """
+    dir_path = financials_dir or DATA_FINANCIALS
+    path = os.path.join(dir_path, slug + ".json")
+    print(f"[financials] Loading {path}")
+    if not os.path.isfile(path):
+        print(f"[financials] File does not exist: {path}")
+        return None
+    try:
+        data = load_json(path)
+        keys = list(data.keys()) if isinstance(data, dict) else []
+        print(f"[financials] Loaded keys: {keys}")
+        return data
+    except Exception as e:
+        print(f"[financials] Failed to load {path}: {e}")
+        return None
+
+
+def load_processed_json(slug: str, processed_dir: str | None = None) -> dict[str, Any] | None:
+    """
+    Load processed guidance from data/processed/<slug>.json.
+    If not found, tries case-insensitive match (e.g. QPOWER.json for slug qpower).
+    Returns None if file missing or invalid.
+    """
+    dir_path = processed_dir or DATA_PROCESSED
+    path = os.path.join(dir_path, slug + ".json")
+    if not os.path.isfile(path) and os.path.isdir(dir_path):
+        for f in os.listdir(dir_path):
+            if f.endswith(".json") and Path(f).stem.lower() == slug:
+                path = os.path.join(dir_path, f)
+                break
+    if not os.path.isfile(path):
+        return None
+    try:
+        return load_json(path)
+    except Exception:
+        return None
 
 
 def load_json(path: str) -> dict[str, Any]:
