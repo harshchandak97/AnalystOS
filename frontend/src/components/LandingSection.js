@@ -4,8 +4,12 @@ function LandingSection({ sectors, onSectorSelect }) {
   const [selectedSector, setSelectedSector] = useState('');
 
   const handleContinue = () => {
+    console.log('Continue button clicked, selected sector:', selectedSector);
     if (selectedSector) {
+      console.log('Calling onSectorSelect with:', selectedSector);
       onSectorSelect(selectedSector);
+    } else {
+      console.warn('No sector selected!');
     }
   };
 

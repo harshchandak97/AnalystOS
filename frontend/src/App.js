@@ -46,14 +46,18 @@ function App() {
 
   const handleSectorSelect = async (sector) => {
     setSelectedSector(sector);
+    setCurrentScreen('stockSelection'); // Navigate immediately
     
     // Fetch companies in sector
     try {
       const response = await axios.get(`${API_BASE}/api/sectors/${sector}/dossiers`);
+      console.log('Fetched dossiers:', response.data);
       setAvailableStocks(response.data.dossiers || []);
-      setCurrentScreen('stockSelection');
     } catch (error) {
       console.error('Error fetching stocks:', error);
+      // Even if API fails, show empty list and let user know
+      alert('Failed to load companies. Please refresh and try again.');
+      setAvailableStocks([]);
     }
   };
 
