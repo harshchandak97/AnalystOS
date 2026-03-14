@@ -1,6 +1,8 @@
 import React from 'react';
 
 function StockSelection({ sector, availableStocks, selectedStocks, onStockToggle, onRunAnalysis, onBack }) {
+  console.log('StockSelection render:', { sector, availableStocks, selectedStocks });
+  
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -32,9 +34,17 @@ function StockSelection({ sector, availableStocks, selectedStocks, onStockToggle
           </p>
         </div>
 
-        {/* Stock Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
-          {availableStocks.map(stock => {
+        {/* Loading or Empty State */}
+        {!availableStocks || availableStocks.length === 0 ? (
+          <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading companies...</p>
+          </div>
+        ) : (
+          <>
+            {/* Stock Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+              {availableStocks.map(stock => {
             const isSelected = selectedStocks.includes(stock.company_id);
             
             return (
@@ -113,6 +123,8 @@ function StockSelection({ sector, availableStocks, selectedStocks, onStockToggle
             </button>
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   );

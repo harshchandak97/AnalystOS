@@ -203,7 +203,10 @@ function App() {
           selectedStocks={selectedStocks}
           onStockToggle={handleStockToggle}
           onRunAnalysis={handleRunAnalysis}
-          onBack={() => setCurrentScreen('landing')}
+          onBack={() => {
+            console.log('Going back to landing');
+            setCurrentScreen('landing');
+          }}
         />
       )}
 
