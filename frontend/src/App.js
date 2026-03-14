@@ -25,10 +25,14 @@ function App() {
 
   const fetchSectors = async () => {
     try {
+      console.log('Fetching sectors from:', `${API_BASE}/api/sectors`);
       const response = await axios.get(`${API_BASE}/api/sectors`);
+      console.log('Sectors response:', response.data);
       setSectors(response.data.sectors || []);
     } catch (error) {
       console.error('Error fetching sectors:', error);
+      // Fallback to default sectors if API fails
+      setSectors(['power_equipment', 'Technology', 'Healthcare', 'Consumer']);
     }
   };
 
